@@ -508,6 +508,46 @@ void mt76_free_device(struct mt76_dev *dev)
 }
 EXPORT_SYMBOL_GPL(mt76_free_device);
 
+static void mt76_rx_release_burst(struct mt76_phy *phy, enum mt76_rxq_id q,
+				  struct sk_buff *skb)
+{
+	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
+	struct sk_buff *nskb = phy->rx_amsdu[q].head;
+	struct mt76_dev *dev = phy->dev;
+
+	/* first amsdu subframe */
+	if (status->amsdu && !phy->rx_amsdu[q].head) {
+		phy->rx_amsdu[q].tail = &skb_shinfo(skb)->frag_list;
+		phy->rx_amsdu[q].seqno = status->seqno;
+		phy->rx_amsdu[q].head = skb;
+		goto enqueue;
+	}
+
+	/* ampdu or out-of-order amsdu subframes */
+	if (!status->amsdu || status->seqno != phy->rx_amsdu[q].seqno) {
+		/* release pending frames */
+		if (phy->rx_amsdu[q].head)
+			__skb_queue_tail(&dev->rx_skb[q],
+					 phy->rx_amsdu[q].head);
+		nskb = skb;
+		goto reset_burst;
+	}
+
+	/* trailing amsdu subframes */
+	*phy->rx_amsdu[q].tail = skb;
+	if (!status->last_amsdu) {
+		phy->rx_amsdu[q].tail = &skb->next;
+		return;
+	}
+
+reset_burst:
+	phy->rx_amsdu[q].head = NULL;
+	phy->rx_amsdu[q].tail = NULL;
+enqueue:
+	if (nskb)
+		__skb_queue_tail(&dev->rx_skb[q], nskb);
+}
+
 void mt76_rx(struct mt76_dev *dev, enum mt76_rxq_id q, struct sk_buff *skb)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
@@ -525,7 +565,8 @@ void mt76_rx(struct mt76_dev *dev, enum mt76_rxq_id q, struct sk_buff *skb)
 			phy->test.rx_stats.fcs_error[q]++;
 	}
 #endif
-	__skb_queue_tail(&dev->rx_skb[q], skb);
+
+	mt76_rx_release_burst(phy, q, skb);
 }
 EXPORT_SYMBOL_GPL(mt76_rx);
 
@@ -937,13 +978,26 @@ void mt76_rx_complete(struct mt76_dev *dev, struct sk_buff_head *frames,
 
 	spin_lock(&dev->rx_lock);
 	while ((skb = __skb_dequeue(frames)) != NULL) {
+		struct sk_buff *nskb = skb_shinfo(skb)->frag_list;
+
 		if (mt76_check_ccmp_pn(skb)) {
 			dev_kfree_skb(skb);
 			continue;
 		}
 
+		skb_shinfo(skb)->frag_list = NULL;
 		mt76_rx_convert(dev, skb, &hw, &sta);
 		ieee80211_rx_list(hw, sta, skb, &list);
+
+		/* subsequent amsdu frames */
+		while (nskb) {
+			skb = nskb;
+			nskb = nskb->next;
+			skb->next = NULL;
+
+			mt76_rx_convert(dev, skb, &hw, &sta);
+			ieee80211_rx_list(hw, sta, skb, &list);
+		}
 	}
 	spin_unlock(&dev->rx_lock);
 

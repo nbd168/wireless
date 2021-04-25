@@ -7,6 +7,10 @@
 #include "mt76.h"
 #include "dma.h"
 
+#define Q_READ(_dev, _q, _field)		readl(&(_q)->regs->_field)
+#define Q_WRITE(_dev, _q, _field, _val)		writel(_val, &(_q)->regs->_field)
+
+
 static struct mt76_txwi_cache *
 mt76_alloc_txwi(struct mt76_dev *dev)
 {
@@ -82,9 +86,9 @@ mt76_free_pending_txwi(struct mt76_dev *dev)
 static void
 mt76_dma_sync_idx(struct mt76_dev *dev, struct mt76_queue *q)
 {
-	writel(q->desc_dma, &q->regs->desc_base);
-	writel(q->ndesc, &q->regs->ring_size);
-	q->head = readl(&q->regs->dma_idx);
+	Q_WRITE(dev, q, desc_base, q->desc_dma);
+	Q_WRITE(dev, q, ring_size, q->ndesc);
+	q->head = Q_READ(dev, q, dma_idx);
 	q->tail = q->head;
 }
 
@@ -100,8 +104,8 @@ mt76_dma_queue_reset(struct mt76_dev *dev, struct mt76_queue *q)
 	for (i = 0; i < q->ndesc; i++)
 		q->desc[i].ctrl = cpu_to_le32(MT_DMA_CTL_DMA_DONE);
 
-	writel(0, &q->regs->cpu_idx);
-	writel(0, &q->regs->dma_idx);
+	Q_WRITE(dev, q, cpu_idx, 0);
+	Q_WRITE(dev, q, dma_idx, 0);
 	mt76_dma_sync_idx(dev, q);
 }
 
@@ -224,7 +228,7 @@ static void
 mt76_dma_kick_queue(struct mt76_dev *dev, struct mt76_queue *q)
 {
 	wmb();
-	writel(q->head, &q->regs->cpu_idx);
+	Q_WRITE(dev, q, cpu_idx, q->head);
 }
 
 static void
@@ -240,7 +244,7 @@ mt76_dma_tx_cleanup(struct mt76_dev *dev, struct mt76_queue *q, bool flush)
 	if (flush)
 		last = -1;
 	else
-		last = readl(&q->regs->dma_idx);
+		last = Q_READ(dev, q, dma_idx);
 
 	while (q->queued > 0 && q->tail != last) {
 		mt76_dma_tx_cleanup_idx(dev, q, q->tail, &entry);
@@ -252,7 +256,7 @@ mt76_dma_tx_cleanup(struct mt76_dev *dev, struct mt76_queue *q, bool flush)
 		}
 
 		if (!flush && q->tail == last)
-			last = readl(&q->regs->dma_idx);
+			last = Q_READ(dev, q, dma_idx);
 
 	}
 	spin_unlock_bh(&q->cleanup_lock);

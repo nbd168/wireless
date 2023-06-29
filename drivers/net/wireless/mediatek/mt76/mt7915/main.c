@@ -269,6 +269,7 @@ static int mt7915_add_interface(struct ieee80211_hw *hw,
 	vif->offload_flags |= IEEE80211_OFFLOAD_ENCAP_4ADDR;
 
 	mt7915_init_bitrate_mask(vif);
+	memset(&mvif->cap, -1, sizeof(mvif->cap));
 
 	mt7915_mcu_add_bss_info(phy, vif, true);
 	mt7915_mcu_add_sta(dev, vif, NULL, true);
@@ -657,6 +658,23 @@ static void mt7915_bss_info_changed(struct ieee80211_hw *hw,
 	mutex_unlock(&dev->mt76.mutex);
 }
 
+static void
+mt7915_vif_check_caps(struct mt7915_phy *phy, struct ieee80211_vif *vif)
+{
+	struct mt7915_vif *mvif = (struct mt7915_vif *)vif->drv_priv;
+	struct mt7915_vif_cap *vc = &mvif->cap;
+
+	vc->vht_ldpc = mvif->cap.vht_ldpc;
+	vc->vht_su_ebfer = mvif->cap.vht_su_ebfer;
+	vc->vht_su_ebfee = mvif->cap.vht_su_ebfee;
+	vc->vht_mu_ebfer = mvif->cap.vht_mu_ebfer;
+	vc->vht_mu_ebfee = mvif->cap.vht_mu_ebfee;
+	vc->he_ldpc = mvif->cap.he_ldpc;
+	vc->he_su_ebfer = mvif->cap.he_su_ebfer;
+	vc->he_su_ebfee = mvif->cap.he_su_ebfee;
+	vc->he_mu_ebfer = vif->bss_conf.he_mu_beamformer;
+}
+
 static int
 mt7915_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		struct ieee80211_bss_conf *link_conf)
@@ -666,6 +684,8 @@ mt7915_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	int err;
 
 	mutex_lock(&dev->mt76.mutex);
+
+	mt7915_vif_check_caps(phy, vif);
 
 	err = mt7915_mcu_add_bss_info(phy, vif, true);
 	if (err)

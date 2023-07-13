@@ -106,7 +106,20 @@ void
 mt76_eeprom_override(struct mt76_phy *phy)
 {
 	struct mt76_dev *dev = phy->dev;
-	struct device_node *np = dev->dev->of_node;
+	struct device_node *child_np, *np = dev->dev->of_node;
+	u32 reg;
+	int ret;
+
+	for_each_child_of_node(np, child_np) {
+		ret = of_property_read_u32(child_np, "reg", &reg);
+		if (ret)
+			continue;
+
+		if (reg == phy->band_idx) {
+			np = child_np;
+			break;
+		}
+	}
 
 	of_get_mac_address(np, phy->macaddr);
 

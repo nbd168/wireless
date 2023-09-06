@@ -3129,4 +3129,6 @@
 
 #define PCI_VENDOR_ID_NCUBE		0x10ff
 
+#define PCI_VENDOR_ID_ITTIM		0x0B48
+
 #endif /* _LINUX_PCI_IDS_H */

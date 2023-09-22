@@ -829,7 +829,6 @@ static void ieee80211_assoc_add_rates(struct sk_buff *skb,
 				      struct ieee80211_supported_band *sband,
 				      struct ieee80211_mgd_assoc_data *assoc_data)
 {
-	unsigned int shift = ieee80211_chanwidth_get_shift(width);
 	unsigned int rates_len, supp_rates_len;
 	u32 rates = 0;
 	int i, count;
@@ -868,8 +867,7 @@ static void ieee80211_assoc_add_rates(struct sk_buff *skb,
 	count = 0;
 	for (i = 0; i < sband->n_bitrates; i++) {
 		if (BIT(i) & rates) {
-			int rate = DIV_ROUND_UP(sband->bitrates[i].bitrate,
-						5 * (1 << shift));
+			int rate = DIV_ROUND_UP(sband->bitrates[i].bitrate, 5);
 			*pos++ = (u8)rate;
 			if (++count == 8)
 				break;
@@ -885,8 +883,7 @@ static void ieee80211_assoc_add_rates(struct sk_buff *skb,
 			if (BIT(i) & rates) {
 				int rate;
 
-				rate = DIV_ROUND_UP(sband->bitrates[i].bitrate,
-						    5 * (1 << shift));
+				rate = DIV_ROUND_UP(sband->bitrates[i].bitrate, 5);
 				*pos++ = (u8)rate;
 			}
 		}
@@ -1763,7 +1760,7 @@ static void ieee80211_chswitch_post_beacon(struct ieee80211_link_data *link)
 	 */
 	link->u.mgd.beacon_crc_valid = false;
 
-	ret = drv_post_channel_switch(sdata);
+	ret = drv_post_channel_switch(link);
 	if (ret) {
 		sdata_info(sdata,
 			   "driver post channel switch failed, disconnecting\n");
@@ -1772,28 +1769,38 @@ static void ieee80211_chswitch_post_beacon(struct ieee80211_link_data *link)
 		return;
 	}
 
-	cfg80211_ch_switch_notify(sdata->dev, &link->reserved_chandef, 0, 0);
+	cfg80211_ch_switch_notify(sdata->dev, &link->reserved_chandef,
+				  link->link_id, 0);
 }
 
-void ieee80211_chswitch_done(struct ieee80211_vif *vif, bool success)
+void ieee80211_chswitch_done(struct ieee80211_vif *vif, bool success,
+			     unsigned int link_id)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
-	if (WARN_ON(ieee80211_vif_is_mld(&sdata->vif)))
-		success = false;
+	trace_api_chswitch_done(sdata, success, link_id);
 
-	trace_api_chswitch_done(sdata, success);
+	rcu_read_lock();
+
 	if (!success) {
 		sdata_info(sdata,
 			   "driver channel switch failed, disconnecting\n");
 		wiphy_work_queue(sdata->local->hw.wiphy,
-				 &ifmgd->csa_connection_drop_work);
+				 &sdata->u.mgd.csa_connection_drop_work);
 	} else {
+		struct ieee80211_link_data *link =
+			rcu_dereference(sdata->link[link_id]);
+
+		if (WARN_ON(!link)) {
+			rcu_read_unlock();
+			return;
+		}
+
 		wiphy_delayed_work_queue(sdata->local->hw.wiphy,
-					 &sdata->deflink.u.mgd.chswitch_work,
-					 0);
+					 &link->u.mgd.chswitch_work, 0);
 	}
+
+	rcu_read_unlock();
 }
 EXPORT_SYMBOL(ieee80211_chswitch_done);
 
@@ -3847,8 +3854,7 @@ static void ieee80211_get_rates(struct ieee80211_supported_band *sband,
 				u8 *supp_rates, unsigned int supp_rates_len,
 				u32 *rates, u32 *basic_rates,
 				bool *have_higher_than_11mbit,
-				int *min_rate, int *min_rate_index,
-				int shift)
+				int *min_rate, int *min_rate_index)
 {
 	int i, j;
 
@@ -3856,7 +3862,7 @@ static void ieee80211_get_rates(struct ieee80211_supported_band *sband,
 		int rate = supp_rates[i] & 0x7f;
 		bool is_basic = !!(supp_rates[i] & 0x80);
 
-		if ((rate * 5 * (1 << shift)) > 110)
+		if ((rate * 5) > 110)
 			*have_higher_than_11mbit = true;
 
 		/*
@@ -3880,7 +3886,7 @@ static void ieee80211_get_rates(struct ieee80211_supported_band *sband,
 
 			br = &sband->bitrates[j];
 
-			brate = DIV_ROUND_UP(br->bitrate, (1 << shift) * 5);
+			brate = DIV_ROUND_UP(br->bitrate, 5);
 			if (brate == rate) {
 				*rates |= BIT(j);
 				if (is_basic)
@@ -4324,8 +4330,6 @@ static int ieee80211_mgd_setup_link_sta(struct ieee80211_link_data *link,
 	u32 rates = 0, basic_rates = 0;
 	bool have_higher_than_11mbit = false;
 	int min_rate = INT_MAX, min_rate_index = -1;
-	/* this is clearly wrong for MLO but we'll just remove it later */
-	int shift = ieee80211_vif_get_shift(&sdata->vif);
 	struct ieee80211_supported_band *sband;
 
 	memcpy(link_sta->addr, cbss->bssid, ETH_ALEN);
@@ -4341,7 +4345,7 @@ static int ieee80211_mgd_setup_link_sta(struct ieee80211_link_data *link,
 
 	ieee80211_get_rates(sband, bss->supp_rates, bss->supp_rates_len,
 			    &rates, &basic_rates, &have_higher_than_11mbit,
-			    &min_rate, &min_rate_index, shift);
+			    &min_rate, &min_rate_index);
 
 	/*
 	 * This used to be a workaround for basic rates missing
@@ -7009,6 +7013,7 @@ int ieee80211_mgd_auth(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 	struct ieee80211_mgd_auth_data *auth_data;
+	struct ieee80211_link_data *link;
 	u16 auth_alg;
 	int err;
 	bool cont_auth;
@@ -7134,8 +7139,6 @@ int ieee80211_mgd_auth(struct ieee80211_sub_if_data *sdata,
 					    false);
 	}
 
-	sdata_info(sdata, "authenticate with %pM\n", auth_data->ap_addr);
-
 	/* needed for transmitting the auth frame(s) properly */
 	memcpy(sdata->vif.cfg.ap_addr, auth_data->ap_addr, ETH_ALEN);
 
@@ -7143,6 +7146,19 @@ int ieee80211_mgd_auth(struct ieee80211_sub_if_data *sdata,
 					req->ap_mld_addr, cont_auth, false);
 	if (err)
 		goto err_clear;
+
+	if (req->link_id > 0)
+		link = sdata_dereference(sdata->link[req->link_id], sdata);
+	else
+		link = sdata_dereference(sdata->link[0], sdata);
+
+	if (WARN_ON(!link)) {
+		err = -ENOLINK;
+		goto err_clear;
+	}
+
+	sdata_info(sdata, "authenticate with %pM (local address=%pM)\n",
+		   auth_data->ap_addr, link->conf->addr);
 
 	err = ieee80211_auth(sdata);
 	if (err) {
@@ -7174,7 +7190,7 @@ ieee80211_setup_assoc_link(struct ieee80211_sub_if_data *sdata,
 			   unsigned int link_id)
 {
 	struct ieee80211_local *local = sdata->local;
-	const struct cfg80211_bss_ies *beacon_ies;
+	const struct cfg80211_bss_ies *bss_ies;
 	struct ieee80211_supported_band *sband;
 	const struct element *ht_elem, *vht_elem;
 	struct ieee80211_link_data *link;
@@ -7249,32 +7265,37 @@ ieee80211_setup_assoc_link(struct ieee80211_sub_if_data *sdata,
 	link->conf->eht_puncturing = 0;
 
 	rcu_read_lock();
-	beacon_ies = rcu_dereference(cbss->beacon_ies);
-	if (beacon_ies) {
-		const struct ieee80211_eht_operation *eht_oper;
-		const struct element *elem;
+	bss_ies = rcu_dereference(cbss->beacon_ies);
+	if (bss_ies) {
 		u8 dtim_count = 0;
 
-		ieee80211_get_dtim(beacon_ies, &dtim_count,
+		ieee80211_get_dtim(bss_ies, &dtim_count,
 				   &link->u.mgd.dtim_period);
 
 		sdata->deflink.u.mgd.have_beacon = true;
 
 		if (ieee80211_hw_check(&local->hw, TIMING_BEACON_ONLY)) {
-			link->conf->sync_tsf = beacon_ies->tsf;
+			link->conf->sync_tsf = bss_ies->tsf;
 			link->conf->sync_device_ts = bss->device_ts_beacon;
 			link->conf->sync_dtim_count = dtim_count;
 		}
+	} else {
+		bss_ies = rcu_dereference(cbss->ies);
+	}
+
+	if (bss_ies) {
+		const struct ieee80211_eht_operation *eht_oper;
+		const struct element *elem;
 
 		elem = cfg80211_find_ext_elem(WLAN_EID_EXT_MULTIPLE_BSSID_CONFIGURATION,
-					      beacon_ies->data, beacon_ies->len);
+					      bss_ies->data, bss_ies->len);
 		if (elem && elem->datalen >= 3)
 			link->conf->profile_periodicity = elem->data[2];
 		else
 			link->conf->profile_periodicity = 0;
 
 		elem = cfg80211_find_elem(WLAN_EID_EXT_CAPABILITY,
-					  beacon_ies->data, beacon_ies->len);
+					  bss_ies->data, bss_ies->len);
 		if (elem && elem->datalen >= 11 &&
 		    (elem->data[10] & WLAN_EXT_CAPA11_EMA_SUPPORT))
 			link->conf->ema_ap = true;
@@ -7282,7 +7303,7 @@ ieee80211_setup_assoc_link(struct ieee80211_sub_if_data *sdata,
 			link->conf->ema_ap = false;
 
 		elem = cfg80211_find_ext_elem(WLAN_EID_EXT_EHT_OPERATION,
-					      beacon_ies->data, beacon_ies->len);
+					      bss_ies->data, bss_ies->len);
 		eht_oper = (const void *)(elem->data + 1);
 
 		if (elem &&

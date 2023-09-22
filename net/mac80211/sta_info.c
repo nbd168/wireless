@@ -2703,7 +2703,8 @@ void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo,
 	}
 
 	if (!(sinfo->filled & BIT_ULL(NL80211_STA_INFO_TX_BITRATE)) &&
-	    !sta->sta.valid_links) {
+	    !sta->sta.valid_links &&
+	    ieee80211_rate_valid(&sta->deflink.tx_stats.last_rate)) {
 		sta_set_rate_info_tx(sta, &sta->deflink.tx_stats.last_rate,
 				     &sinfo->txrate);
 		sinfo->filled |= BIT_ULL(NL80211_STA_INFO_TX_BITRATE);
@@ -2866,6 +2867,8 @@ int ieee80211_sta_allocate_link(struct sta_info *sta, unsigned int link_id)
 
 	lockdep_assert_wiphy(sdata->local->hw.wiphy);
 
+	WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED));
+
 	/* must represent an MLD from the start */
 	if (WARN_ON(!sta->sta.valid_links))
 		return -EINVAL;
@@ -2895,6 +2898,8 @@ void ieee80211_sta_free_link(struct sta_info *sta, unsigned int link_id)
 {
 	lockdep_assert_wiphy(sta->sdata->local->hw.wiphy);
 
+	WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED));
+
 	sta_remove_link(sta, link_id, false);
 }
 
@@ -2922,7 +2927,7 @@ int ieee80211_sta_activate_link(struct sta_info *sta, unsigned int link_id)
 
 	sta->sta.valid_links = new_links;
 
-	if (!test_sta_flag(sta, WLAN_STA_INSERTED))
+	if (WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED)))
 		goto hash;
 
 	ieee80211_recalc_min_chandef(sdata, link_id);
@@ -2955,7 +2960,7 @@ void ieee80211_sta_remove_link(struct sta_info *sta, unsigned int link_id)
 
 	sta->sta.valid_links &= ~BIT(link_id);
 
-	if (test_sta_flag(sta, WLAN_STA_INSERTED))
+	if (!WARN_ON(!test_sta_flag(sta, WLAN_STA_INSERTED)))
 		drv_change_sta_links(sdata->local, sdata, &sta->sta,
 				     old_links, sta->sta.valid_links);
 
@@ -2982,7 +2987,7 @@ void ieee80211_sta_set_max_amsdu_subframes(struct sta_info *sta,
 				   WLAN_EXT_CAPA9_MAX_MSDU_IN_AMSDU_MSB) << 1;
 
 	if (val)
-		sta->sta.max_amsdu_subframes = 4 << val;
+		sta->sta.max_amsdu_subframes = 4 << (4 - val);
 }
 
 #ifdef CONFIG_LOCKDEP

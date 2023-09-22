@@ -926,6 +926,12 @@ struct rtw89_port_reg {
 	u32 bcn_cnt_tmr;
 	u32 tsftr_l;
 	u32 tsftr_h;
+	u32 md_tsft;
+	u32 bss_color;
+	u32 mbssid;
+	u32 mbssid_drop;
+	u32 tsf_sync;
+	u32 hiq_win[RTW89_PORT_NUM];
 };
 
 struct rtw89_txwd_body {
@@ -948,6 +954,17 @@ struct rtw89_txwd_body_v1 {
 	__le32 dword7;
 } __packed;
 
+struct rtw89_txwd_body_v2 {
+	__le32 dword0;
+	__le32 dword1;
+	__le32 dword2;
+	__le32 dword3;
+	__le32 dword4;
+	__le32 dword5;
+	__le32 dword6;
+	__le32 dword7;
+} __packed;
+
 struct rtw89_txwd_info {
 	__le32 dword0;
 	__le32 dword1;
@@ -957,10 +974,23 @@ struct rtw89_txwd_info {
 	__le32 dword5;
 } __packed;
 
+struct rtw89_txwd_info_v2 {
+	__le32 dword0;
+	__le32 dword1;
+	__le32 dword2;
+	__le32 dword3;
+	__le32 dword4;
+	__le32 dword5;
+	__le32 dword6;
+	__le32 dword7;
+} __packed;
+
 struct rtw89_rx_desc_info {
 	u16 pkt_size;
 	u8 pkt_type;
 	u8 drv_info_size;
+	u8 phy_rpt_size;
+	u8 hdr_cnv_size;
 	u8 shift;
 	u8 wl_hd_iv_len;
 	bool long_rxdesc;
@@ -999,6 +1029,15 @@ struct rtw89_rxdesc_short {
 	__le32 dword3;
 } __packed;
 
+struct rtw89_rxdesc_short_v2 {
+	__le32 dword0;
+	__le32 dword1;
+	__le32 dword2;
+	__le32 dword3;
+	__le32 dword4;
+	__le32 dword5;
+} __packed;
+
 struct rtw89_rxdesc_long {
 	__le32 dword0;
 	__le32 dword1;
@@ -1008,6 +1047,19 @@ struct rtw89_rxdesc_long {
 	__le32 dword5;
 	__le32 dword6;
 	__le32 dword7;
+} __packed;
+
+struct rtw89_rxdesc_long_v2 {
+	__le32 dword0;
+	__le32 dword1;
+	__le32 dword2;
+	__le32 dword3;
+	__le32 dword4;
+	__le32 dword5;
+	__le32 dword6;
+	__le32 dword7;
+	__le32 dword8;
+	__le32 dword9;
 } __packed;
 
 struct rtw89_tx_desc_info {
@@ -2930,6 +2982,7 @@ struct rtw89_vif {
 	struct list_head list;
 	struct rtw89_dev *rtwdev;
 	struct rtw89_roc roc;
+	bool chanctx_assigned; /* only valid when running with chanctx_ops */
 	enum rtw89_sub_entity_idx sub_entity_idx;
 	enum rtw89_reg_6ghz_power reg_6ghz_power;
 
@@ -3429,6 +3482,7 @@ enum rtw89_chanctx_state {
 
 enum rtw89_chanctx_callbacks {
 	RTW89_CHANCTX_CALLBACK_PLACEHOLDER,
+	RTW89_CHANCTX_CALLBACK_RFK,
 
 	NUM_OF_RTW89_CHANCTX_CALLBACKS,
 };
@@ -3529,6 +3583,7 @@ struct rtw89_chip_info {
 	u32 hci_func_en_addr;
 	u32 h2c_desc_size;
 	u32 txwd_body_size;
+	u32 txwd_info_size;
 	u32 h2c_ctrl_reg;
 	const u32 *h2c_regs;
 	struct rtw89_reg_def h2c_counter_reg;
@@ -3786,6 +3841,17 @@ struct rtw89_chanctx_cfg {
 	enum rtw89_sub_entity_idx idx;
 };
 
+enum rtw89_chanctx_changes {
+	RTW89_CHANCTX_REMOTE_STA_CHANGE,
+	RTW89_CHANCTX_BCN_OFFSET_CHANGE,
+	RTW89_CHANCTX_P2P_PS_CHANGE,
+	RTW89_CHANCTX_BT_SLOT_CHANGE,
+	RTW89_CHANCTX_TSF32_TOGGLE_CHANGE,
+
+	NUM_OF_RTW89_CHANCTX_CHANGES,
+	RTW89_CHANCTX_CHANGE_DFLT = NUM_OF_RTW89_CHANCTX_CHANGES,
+};
+
 enum rtw89_entity_mode {
 	RTW89_ENTITY_MODE_SCC,
 	RTW89_ENTITY_MODE_MCC_PREPARE,
@@ -3817,6 +3883,7 @@ struct rtw89_hal {
 	bool support_igi;
 	atomic_t roc_entity_idx;
 
+	DECLARE_BITMAP(changes, NUM_OF_RTW89_CHANCTX_CHANGES);
 	DECLARE_BITMAP(entity_map, NUM_OF_RTW89_SUB_ENTITY);
 	struct rtw89_sub_entity sub[NUM_OF_RTW89_SUB_ENTITY];
 	struct cfg80211_chan_def roc_chandef;
@@ -5439,7 +5506,13 @@ void rtw89_core_fill_txdesc(struct rtw89_dev *rtwdev,
 void rtw89_core_fill_txdesc_v1(struct rtw89_dev *rtwdev,
 			       struct rtw89_tx_desc_info *desc_info,
 			       void *txdesc);
+void rtw89_core_fill_txdesc_v2(struct rtw89_dev *rtwdev,
+			       struct rtw89_tx_desc_info *desc_info,
+			       void *txdesc);
 void rtw89_core_fill_txdesc_fwcmd_v1(struct rtw89_dev *rtwdev,
+				     struct rtw89_tx_desc_info *desc_info,
+				     void *txdesc);
+void rtw89_core_fill_txdesc_fwcmd_v2(struct rtw89_dev *rtwdev,
 				     struct rtw89_tx_desc_info *desc_info,
 				     void *txdesc);
 void rtw89_core_rx(struct rtw89_dev *rtwdev,
@@ -5448,6 +5521,9 @@ void rtw89_core_rx(struct rtw89_dev *rtwdev,
 void rtw89_core_query_rxdesc(struct rtw89_dev *rtwdev,
 			     struct rtw89_rx_desc_info *desc_info,
 			     u8 *data, u32 data_offset);
+void rtw89_core_query_rxdesc_v2(struct rtw89_dev *rtwdev,
+				struct rtw89_rx_desc_info *desc_info,
+				u8 *data, u32 data_offset);
 void rtw89_core_napi_start(struct rtw89_dev *rtwdev);
 void rtw89_core_napi_stop(struct rtw89_dev *rtwdev);
 void rtw89_core_napi_init(struct rtw89_dev *rtwdev);
@@ -5516,6 +5592,7 @@ void rtw89_core_scan_complete(struct rtw89_dev *rtwdev,
 			      struct ieee80211_vif *vif, bool hw_scan);
 void rtw89_reg_6ghz_power_recalc(struct rtw89_dev *rtwdev,
 				 struct rtw89_vif *rtwvif, bool active);
+void rtw89_core_update_p2p_ps(struct rtw89_dev *rtwdev, struct ieee80211_vif *vif);
 void rtw89_core_ntfy_btc_event(struct rtw89_dev *rtwdev, enum rtw89_btc_hmsg event);
 
 #endif

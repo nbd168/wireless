@@ -1707,7 +1707,9 @@ mt7925_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb,
 			     struct ieee80211_link_sta *link_sta)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
-	struct cfg80211_chan_def *chandef = &mvif->bss_conf.mt76.ctx->def;
+	struct mt792x_bss_conf *mconf = mt792x_vif_to_link(mvif,
+							   link_sta->link_id);
+	struct cfg80211_chan_def *chandef = &mconf->mt76.ctx->def;
 	enum nl80211_band band = chandef->chan->band;
 	struct sta_rec_ra_info *ra_info;
 	struct tlv *tlv;

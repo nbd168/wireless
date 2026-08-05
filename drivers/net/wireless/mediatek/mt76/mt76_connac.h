@@ -128,6 +128,7 @@ struct mt76_connac_coredump {
 	struct sk_buff_head msg_list;
 	struct delayed_work work;
 	unsigned long last_activity;
+	bool complete;
 };
 
 struct mt76_connac_sta_key_conf {

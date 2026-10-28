@@ -295,6 +295,7 @@ struct mt7996_vif_link {
 
 	u8 mld_idx;
 	u8 bmc_bssid[ETH_ALEN];
+	bool csa_bcn_uploaded;
 };
 
 struct mt7996_vif_link_info {
@@ -416,6 +417,7 @@ struct mt7996_phy {
 	bool has_aux_rx;
 	bool counter_reset;
 	bool rdd_tx_paused;
+	bool offchan_bcn_stopped;
 };
 
 struct mt7996_dev {

@@ -508,14 +508,14 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 	if (!mt7615_firmware_offload(dev) && chfreq != phy->chfreq)
 		return -EINVAL;
 
+	if (!test_bit(MT76_STATE_RUNNING, &mphy->state))
+		return -EINVAL;
+
 	mt7615_get_status_freq_info(dev, mphy, status, chfreq);
 	if (status->band == NL80211_BAND_5GHZ)
 		sband = &mphy->sband_5g.sband;
 	else
 		sband = &mphy->sband_2g.sband;
-
-	if (!test_bit(MT76_STATE_RUNNING, &mphy->state))
-		return -EINVAL;
 
 	if (!sband->channels)
 		return -EINVAL;

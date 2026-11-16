@@ -1630,7 +1630,7 @@ void mt7615_queue_rx_skb(struct mt76_dev *mdev, enum mt76_rxq_id q,
 {
 	struct mt7615_dev *dev = container_of(mdev, struct mt7615_dev, mt76);
 	__le32 *rxd = (__le32 *)skb->data;
-	__le32 *end = (__le32 *)&skb->data[skb->len];
+	__le32 *end = (__le32 *)&skb->data[skb_headlen(skb)];
 	enum rx_pkt_type type;
 	u16 flag;
 

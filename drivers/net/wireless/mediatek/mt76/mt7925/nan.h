@@ -93,6 +93,7 @@ enum nan_uni_cmd_tag {
 	NAN_UNI_CMD_SET_SYNC_RSSI		= 39,
 	NAN_UNI_CMD_SET_CLUSTER_ID		= 40,
 	NAN_UNI_CMD_KEY_MANAGEMENT		= 53,
+	NAN_UNI_CMD_DW_WTBL_IDX			= 55,
 };
 
 enum nan_uni_event_tag {
@@ -380,6 +381,13 @@ struct mt7925_nan_nmi_addr_tlv {
 	u8 nmi_addr[ETH_ALEN];
 } __packed __aligned(4);
 
+struct mt7925_nan_dw_wtbl_idx_tlv {
+	__le16 tag;
+	__le16 len;
+	__le16 wlan_idx;
+	u8 reserved[2];
+} __packed __aligned(4);
+
 struct mt7925_nan_avail_ctrl_tlv {
 	__le16 tag;
 	__le16 len;
@@ -601,6 +609,9 @@ int mt7925_nan_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		       struct ieee80211_key_conf *key);
 
 int mt7925_nan_wcid_alloc(struct mt792x_dev *dev, struct mt76_wcid *wcid);
+
+void mt7925_nan_dw_wcid_release(struct mt792x_dev *dev,
+				struct ieee80211_vif *vif);
 
 void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
 				    struct ieee80211_vif *vif);

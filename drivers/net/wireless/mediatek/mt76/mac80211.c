@@ -1623,6 +1623,8 @@ void mt76_rx_complete(struct mt76_dev *dev, struct sk_buff_head *frames,
 		mt76_check_ccmp_pn(skb);
 		skb_shinfo(skb)->frag_list = NULL;
 		mt76_rx_convert(dev, skb, &hw, &link_sta);
+		if (nskb)
+			IEEE80211_SKB_RXCB(skb)->flag |= RX_FLAG_AMSDU_MORE;
 		ieee80211_rx_list(hw, link_sta, skb, &list);
 
 		/* subsequent amsdu frames */
@@ -1632,6 +1634,8 @@ void mt76_rx_complete(struct mt76_dev *dev, struct sk_buff_head *frames,
 			skb->next = NULL;
 
 			mt76_rx_convert(dev, skb, &hw, &link_sta);
+			if (nskb)
+				IEEE80211_SKB_RXCB(skb)->flag |= RX_FLAG_AMSDU_MORE;
 			ieee80211_rx_list(hw, link_sta, skb, &list);
 		}
 	}

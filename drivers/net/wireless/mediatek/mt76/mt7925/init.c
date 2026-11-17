@@ -137,7 +137,8 @@ static int mt7925_init_hardware(struct mt792x_dev *dev)
 	set_bit(MT76_STATE_INITIALIZED, &dev->mphy.state);
 
 	for (i = 0; i < MT792x_MCU_INIT_RETRY_COUNT; i++) {
-		if (atomic_read(&dev->mt76.bus_hung)) {
+		if (atomic_read(&dev->mt76.bus_hung) ||
+		    test_bit(MT76_REMOVED, &dev->mphy.state)) {
 			ret = -EIO;
 			break;
 		}
@@ -146,18 +147,17 @@ static int mt7925_init_hardware(struct mt792x_dev *dev)
 		if (!ret)
 			break;
 
-		if (atomic_read(&dev->mt76.bus_hung))
+		if (atomic_read(&dev->mt76.bus_hung) ||
+		    test_bit(MT76_REMOVED, &dev->mphy.state))
 			break;
 
 		mt792x_init_reset(dev);
 	}
 
-	if (i == MT792x_MCU_INIT_RETRY_COUNT) {
+	if (i == MT792x_MCU_INIT_RETRY_COUNT)
 		dev_err(dev->mt76.dev, "hardware init failed\n");
-		return ret;
-	}
 
-	return 0;
+	return ret;
 }
 
 static int mt7925_init_nan_cap(struct mt76_dev *mdev)

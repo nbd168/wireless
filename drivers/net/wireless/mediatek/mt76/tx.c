@@ -634,10 +634,13 @@ mt76_txq_schedule_list(struct mt76_phy *phy, enum mt76_txq_id qid)
 			if (!mt76_txq_stopped(q))
 				n_frames = mt76_txq_send_burst(phy, q, mtxq, wcid);
 
-			ieee80211_return_txq(phy->hw, txq, false);
-
 			if (unlikely(n_frames < 0))
 				return n_frames;
+
+			/* an undrainable PS station would starve all others */
+			if (n_frames > 0 || mt76_txq_stopped(q))
+				ieee80211_return_txq(phy->hw, txq, false);
+
 			ret += n_frames;
 			continue;
 		}

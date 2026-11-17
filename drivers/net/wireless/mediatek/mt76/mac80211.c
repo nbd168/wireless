@@ -1387,8 +1387,7 @@ mt76_rx_convert(struct mt76_dev *dev, struct sk_buff *skb,
 	*hw = mt76_phy_hw(dev, mstat.phy_idx);
 }
 
-static void
-mt76_check_ccmp_pn(struct sk_buff *skb)
+void mt76_check_ccmp_pn(struct sk_buff *skb)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct mt76_wcid *wcid = status->wcid;
@@ -1401,6 +1400,9 @@ mt76_check_ccmp_pn(struct sk_buff *skb)
 		return;
 
 	if (status->flag & RX_FLAG_ONLY_MONITOR)
+		return;
+
+	if (status->skip_pn_check)
 		return;
 
 	if (!wcid || !wcid->rx_check_pn)

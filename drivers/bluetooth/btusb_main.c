@@ -4411,6 +4411,14 @@ static int btusb_probe(struct usb_interface *intf,
 	if (id->driver_info & BTUSB_IGNORE)
 		return -ENODEV;
 
+	/* MediaTek controllers carry ISO data on a separate interface,
+	 * which btusb_mtk_setup() claims for the HCI device of interface 0.
+	 * It has no ACL endpoints, so do not probe it as a device of its own.
+	 */
+	if ((id->driver_info & BTUSB_MEDIATEK) &&
+	    ifnum_base == MTK_ISO_IFNUM)
+		return -ENODEV;
+
 	if (id->driver_info & BTUSB_ATH3012) {
 		struct usb_device *udev = interface_to_usbdev(intf);
 

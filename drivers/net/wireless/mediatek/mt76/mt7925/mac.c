@@ -793,6 +793,14 @@ mt7925_mac_write_txwi(struct mt76_dev *dev, __le32 *txwi,
 		band_idx = mvif->band_idx;
 	}
 
+	/* An off-channel frame must go out on the band of the ROC channel,
+	 * which can differ from the band the BSS was set up on: a P2P Device
+	 * has no channel of its own and keeps the band of the channel the
+	 * phy was on when it was added.
+	 */
+	if (is_mt7927(dev) && (info->flags & IEEE80211_TX_CTL_TX_OFFCHAN))
+		band_idx = mt7927_band_idx(info->band);
+
 	if (inband_disc) {
 		p_fmt = MT_TX_TYPE_FW;
 		q_idx = MT_LMAC_ALTX0;

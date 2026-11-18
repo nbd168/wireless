@@ -1412,7 +1412,7 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 {
 	struct hci_cp_le_set_ext_adv_params cp;
 	struct hci_rp_le_set_ext_adv_params rp;
-	bool connectable, require_privacy;
+	bool connectable, periodic, require_privacy;
 	u32 flags;
 	bdaddr_t random_addr;
 	u8 own_addr_type;
@@ -1449,9 +1449,13 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 
 	/* If the "connectable" instance flag was not set, then choose between
 	 * ADV_IND and ADV_NONCONN_IND based on the global connectable setting.
+	 * A periodic advertising set must be neither connectable nor
+	 * scannable, or the controller rejects its periodic parameters.
 	 */
-	connectable = (flags & MGMT_ADV_FLAG_CONNECTABLE) ||
-		      mgmt_get_connectable(hdev);
+	periodic = adv && adv->periodic;
+	connectable = !periodic &&
+		      ((flags & MGMT_ADV_FLAG_CONNECTABLE) ||
+		       mgmt_get_connectable(hdev));
 
 	if (!is_advertising_allowed(hdev, connectable)) {
 		if (instance)
@@ -1463,7 +1467,7 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 	 * advertising is used and it is not periodic.
 	 * In that case it is fine to use a non-resolvable private address.
 	 */
-	require_privacy = !connectable && !(adv && adv->periodic);
+	require_privacy = !connectable && !periodic;
 
 	err = hci_get_random_address(hdev, require_privacy,
 				     adv_use_rpa(hdev, flags), adv,
@@ -1495,8 +1499,9 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 			cp.evt_properties = cpu_to_le16(LE_EXT_ADV_CONN_IND);
 		else
 			cp.evt_properties = cpu_to_le16(LE_LEGACY_ADV_IND);
-	} else if (hci_adv_instance_is_scannable(hdev, instance) ||
-		   (flags & MGMT_ADV_PARAM_SCAN_RSP)) {
+	} else if (!periodic &&
+		   (hci_adv_instance_is_scannable(hdev, instance) ||
+		    (flags & MGMT_ADV_PARAM_SCAN_RSP))) {
 		if (secondary_adv)
 			cp.evt_properties = cpu_to_le16(LE_EXT_ADV_SCAN_IND);
 		else

@@ -424,13 +424,13 @@ static int mt7925_mac_link_bss_add(struct mt792x_dev *dev,
 	else
 		mconf->mt76.basic_rates_idx = MT792x_BASIC_RATES_TBL;
 
-	/* Not for a P2P client: the hardware would attribute the group
-	 * frames of its GO to the BMC wcid, which has no station, and
-	 * mac80211 drops them. A client sends its group frames to the GO
-	 * as unicast, so it does not need one.
+	/* Only for the P2P Device. Not for a P2P client: the hardware
+	 * would attribute the group frames of its GO to the BMC wcid,
+	 * which has no station, and mac80211 drops them. Not for a GO
+	 * either: the firmware does not hold back group frames sent on it
+	 * while a client is in power save.
 	 */
-	if (vif->type == NL80211_IFTYPE_P2P_DEVICE ||
-	    (vif->p2p && vif->type == NL80211_IFTYPE_AP)) {
+	if (vif->type == NL80211_IFTYPE_P2P_DEVICE) {
 		ret = mt7925_p2p_bmc_add(dev, mconf);
 		if (ret)
 			goto out;

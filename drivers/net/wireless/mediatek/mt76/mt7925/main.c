@@ -307,13 +307,17 @@ __mt7925_set_stream_he_eht_caps(struct mt792x_phy *phy,
 	for (i = 0; i < NUM_NL80211_IFTYPES; i++) {
 		switch (i) {
 		case NL80211_IFTYPE_STATION:
+			data[n].types_mask = BIT(i) |
+					     BIT(NL80211_IFTYPE_P2P_CLIENT);
+			break;
 		case NL80211_IFTYPE_AP:
+			data[n].types_mask = BIT(i) |
+					     BIT(NL80211_IFTYPE_P2P_GO);
 			break;
 		default:
 			continue;
 		}
 
-		data[n].types_mask = BIT(i);
 		mt7925_init_he_caps(phy, band, &data[n], i);
 		mt7925_init_eht_caps(phy, band, &data[n]);
 

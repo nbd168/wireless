@@ -7492,6 +7492,22 @@ static void hci_le_big_sync_lost_evt(struct hci_dev *hdev, void *data,
 		hci_conn_del(bis);
 	}
 
+	/* A controller may give up on a BIG that it is still synchronizing to,
+	 * for example on a MIC failure, without sending BIG Sync Established
+	 * first. Nothing else ends the wait of hci_le_big_create_sync() then.
+	 */
+	rcu_read_lock();
+	list_for_each_entry_rcu(bis, &hdev->conn_hash.list, list) {
+		if (bis->type != PA_LINK ||
+		    bis->iso_qos.bcast.big != ev->handle ||
+		    !test_bit(HCI_CONN_CREATE_BIG_SYNC, &bis->flags))
+			continue;
+
+		hci_cmd_sync_cancel_sync(hdev, bt_to_errno(ev->reason));
+		break;
+	}
+	rcu_read_unlock();
+
 	hci_dev_unlock(hdev);
 }
 

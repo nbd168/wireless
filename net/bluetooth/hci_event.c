@@ -6107,6 +6107,15 @@ static void hci_le_pa_sync_lost_evt(struct hci_dev *hdev, void *data,
 		hci_conn_del(conn);
 	}
 
+	/* Without deferred setup the listening hcon stands for the sync */
+	rcu_read_lock();
+	list_for_each_entry_rcu(conn, &hdev->conn_hash.list, list) {
+		if (conn->type == PA_LINK && conn->state == BT_LISTEN &&
+		    conn->sync_handle == handle)
+			clear_bit(HCI_CONN_PA_SYNC, &conn->flags);
+	}
+	rcu_read_unlock();
+
 	hci_dev_unlock(hdev);
 }
 
@@ -6770,8 +6779,14 @@ static void hci_le_pa_sync_established_evt(struct hci_dev *hdev, void *data,
 		goto unlock;
 	}
 
-	if (!(flags & HCI_PROTO_DEFER))
+	if (!(flags & HCI_PROTO_DEFER)) {
+		/* No child hcon is added to stand for the sync: mark it on the
+		 * listening one, for the sync to be terminated along with it.
+		 */
+		if (!ev->status)
+			set_bit(HCI_CONN_PA_SYNC, &conn->flags);
 		goto unlock;
+	}
 
 	/* Add connection to indicate PA sync event */
 	pa_sync = hci_conn_add_unset(hdev, PA_LINK, BDADDR_ANY, 0,

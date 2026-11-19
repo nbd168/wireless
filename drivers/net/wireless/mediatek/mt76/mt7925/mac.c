@@ -910,6 +910,12 @@ mt7925_mac_write_txwi(struct mt76_dev *dev, __le32 *txwi,
 				idx = mvif->basic_rates_idx;
 		}
 
+		/* The first four entries of the table are the CCK rates */
+		if ((info->flags & IEEE80211_TX_CTL_NO_CCK_RATE) &&
+		    idx >= MT792x_BASIC_RATES_TBL &&
+		    idx < MT792x_BASIC_RATES_TBL + 4)
+			idx = MT792x_BASIC_RATES_TBL + 4;
+
 		txwi[6] |= cpu_to_le32(FIELD_PREP(MT_TXD6_TX_RATE, idx));
 
 		if (is_mt7928(dev))

@@ -1945,8 +1945,14 @@ int hci_start_per_adv_sync(struct hci_dev *hdev, u8 instance, u8 sid,
 	return 0;
 
 fail:
-	if (added)
+	if (added) {
+		/* The set may already be enabled in the controller: remove it
+		 * there before dropping the instance, nothing can refer to it
+		 * afterwards.
+		 */
+		hci_remove_ext_adv_instance_sync(hdev, instance, NULL);
 		hci_remove_adv_instance(hdev, instance);
+	}
 
 	return err;
 }

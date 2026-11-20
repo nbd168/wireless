@@ -1492,7 +1492,11 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 		cp.sid = 0x00;
 	}
 
-	secondary_adv = (flags & MGMT_ADV_FLAG_SEC_MASK);
+	/* Periodic advertising needs extended advertising PDUs whatever PHY
+	 * was asked for: the controller rejects its parameters for a set that
+	 * uses legacy PDUs.
+	 */
+	secondary_adv = periodic || (flags & MGMT_ADV_FLAG_SEC_MASK);
 
 	if (connectable) {
 		if (secondary_adv)

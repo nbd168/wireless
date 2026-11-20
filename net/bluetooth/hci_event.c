@@ -4102,7 +4102,31 @@ static u8 hci_cc_le_read_all_local_features(struct hci_dev *hdev, void *data,
 
 static void hci_cs_le_create_big(struct hci_dev *hdev, u8 status)
 {
+	struct hci_cp_le_create_big *cp;
+	struct hci_conn *conn;
+
 	bt_dev_dbg(hdev, "status 0x%2.2x", status);
+
+	if (!status)
+		return;
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_LE_CREATE_BIG);
+	if (!cp)
+		return;
+
+	hci_dev_lock(hdev);
+
+	/* No LE Create BIG Complete event follows a command that failed, so
+	 * fail the BISes bound to the BIG here.
+	 */
+	while ((conn = hci_conn_hash_lookup_big_state(hdev, cp->handle,
+						      BT_BOUND,
+						      HCI_ROLE_MASTER))) {
+		hci_connect_cfm(conn, status);
+		hci_conn_del(conn);
+	}
+
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cs_le_read_all_remote_features(struct hci_dev *hdev, u8 status)

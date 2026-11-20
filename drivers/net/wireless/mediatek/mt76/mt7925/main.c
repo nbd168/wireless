@@ -449,8 +449,13 @@ static int mt7925_mac_link_bss_add(struct mt792x_dev *dev,
 	ret = mt76_connac_mcu_uni_add_dev(&dev->mphy, link_conf, &mconf->mt76,
 					  &mlink->wcid, true);
 	if (ret) {
-		if (mconf != &mvif->bss_conf)
+		if (mconf != &mvif->bss_conf) {
+			rcu_assign_pointer(dev->mt76.wcid[idx], NULL);
+			mt76_wcid_cleanup(&dev->mt76, &mlink->wcid);
+			dev->mt76.vif_mask &= ~BIT_ULL(mconf->mt76.idx);
+			mvif->phy->omac_mask &= ~BIT_ULL(mconf->mt76.omac_idx);
 			mt7925_p2p_bmc_remove(dev, mconf);
+		}
 		goto out;
 	}
 
@@ -2475,6 +2480,25 @@ static void mt7925_link_info_changed(struct ieee80211_hw *hw,
 	mt792x_mutex_release(dev);
 }
 
+static void
+mt7925_vif_link_remove(struct mt792x_dev *dev, struct mt792x_vif *mvif,
+		       unsigned int link_id, struct mt792x_bss_conf *mconf,
+		       struct mt792x_link_sta *mlink, bool bss_remove)
+{
+	rcu_assign_pointer(mvif->link_conf[link_id], NULL);
+	rcu_assign_pointer(mvif->sta.link[link_id], NULL);
+
+	if (bss_remove)
+		mt792x_mac_link_bss_remove(dev, mconf, mlink);
+
+	if (mconf != &mvif->bss_conf) {
+		mt7925_p2p_bmc_remove(dev, mconf);
+		kfree_rcu(mconf, mt76.rcu_head);
+	}
+	if (mlink != &mvif->sta.deflink)
+		kfree_rcu(mlink, rcu_head);
+}
+
 static int
 mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			u16 old_links, u16 new_links,
@@ -2488,6 +2512,7 @@ mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
 	struct mt792x_phy *phy = mt792x_hw_phy(hw);
 	struct ieee80211_bss_conf *link_conf;
+	unsigned long added = 0;
 	unsigned int link_id;
 	int err;
 
@@ -2503,15 +2528,8 @@ mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		if (!mconf || !mlink)
 			continue;
 
-		if (mconf != &mvif->bss_conf) {
-			mt792x_mac_link_bss_remove(dev, mconf, mlink);
-			mt7925_p2p_bmc_remove(dev, mconf);
-			devm_kfree(dev->mt76.dev, mconf);
-			devm_kfree(dev->mt76.dev, mlink);
-		}
-
-		rcu_assign_pointer(mvif->link_conf[link_id], NULL);
-		rcu_assign_pointer(mvif->sta.link[link_id], NULL);
+		mt7925_vif_link_remove(dev, mvif, link_id, mconf, mlink,
+				       mconf != &mvif->bss_conf);
 	}
 
 	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
@@ -2520,11 +2538,13 @@ mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			mconf = &mvif->bss_conf;
 			mlink = &mvif->sta.deflink;
 		} else {
-			mconf = devm_kzalloc_obj(dev->mt76.dev, *mconf);
-			mlink = devm_kzalloc_obj(dev->mt76.dev, *mlink);
+			mconf = kzalloc_obj(*mconf);
+			mlink = kzalloc_obj(*mlink);
 			if (!mconf || !mlink) {
-				mt792x_mutex_release(dev);
-				return -ENOMEM;
+				kfree(mconf);
+				kfree(mlink);
+				err = -ENOMEM;
+				goto free_unpublished;
 			}
 		}
 
@@ -2553,6 +2573,8 @@ mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		if (err < 0)
 			goto free;
 
+		added |= BIT(link_id);
+
 		if (mconf != &mvif->bss_conf) {
 			err = mt7925_set_mlo_roc(phy, &mvif->bss_conf,
 						 vif->active_links);
@@ -2580,18 +2602,17 @@ mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	return 0;
 
 free:
+	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS)
+		mt7925_vif_link_remove(dev, mvif, link_id, mconfs[link_id],
+				       mlinks[link_id], added & BIT(link_id));
+	goto out;
+
+free_unpublished:
 	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
-		rcu_assign_pointer(mvif->link_conf[link_id], NULL);
-		rcu_assign_pointer(mvif->sta.link[link_id], NULL);
-
-		if (mconfs[link_id] != &mvif->bss_conf) {
-			mt7925_p2p_bmc_remove(dev, mconfs[link_id]);
-			devm_kfree(dev->mt76.dev, mconfs[link_id]);
-		}
-		if (mlinks[link_id] != &mvif->sta.deflink)
-			devm_kfree(dev->mt76.dev, mlinks[link_id]);
+		kfree(mconfs[link_id]);
+		kfree(mlinks[link_id]);
 	}
-
+out:
 	mt792x_mutex_release(dev);
 
 	return err;

@@ -3109,6 +3109,23 @@ static int btusb_mtk_reset(struct hci_dev *hdev, void *rst_data)
 
 	err = btmtk_usb_subsys_reset(hdev, btmtk_data->dev_id);
 
+	/* An MT7925 that sees the USB reset below before it has its firmware
+	 * again comes back with a dead ISO OUT endpoint: every URB on it ends
+	 * with -EPROTO until the next USB reset. A USB reset with the firmware
+	 * running does no harm, so load the firmware first. The commands for
+	 * that only get through while the device is open. When it is closed,
+	 * or when the download fails, carry on as before and leave the
+	 * firmware to the setup that follows the USB reset.
+	 */
+	if (!err && btmtk_data->dev_id == 0x7925 &&
+	    test_bit(HCI_RUNNING, &hdev->flags)) {
+		int fw_err = btmtk_usb_reload_firmware(hdev, btmtk_data->dev_id);
+
+		if (fw_err < 0)
+			bt_dev_warn(hdev, "Failed to load firmware before the USB reset (%d)",
+				    fw_err);
+	}
+
 	if (test_and_set_bit(BTUSB_RESET, &data->flags)) {
 		bt_dev_err(hdev, "last usb reset failed? Resetting again");
 		usb_autopm_put_interface_no_suspend(data->intf);

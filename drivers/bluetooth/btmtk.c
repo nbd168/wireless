@@ -1442,6 +1442,36 @@ int btmtk_usb_subsys_reset(struct hci_dev *hdev, u32 dev_id)
 }
 EXPORT_SYMBOL_GPL(btmtk_usb_subsys_reset);
 
+/* Load the firmware into a device that has been through
+ * btmtk_usb_subsys_reset() and has not been set up again yet.
+ */
+int btmtk_usb_reload_firmware(struct hci_dev *hdev, u32 dev_id)
+{
+	u32 fw_version = 0, fw_flavor = 0;
+	char fw_bin_name[64];
+	int err;
+
+	err = btmtk_usb_id_get(hdev, 0x80021004, &fw_version);
+	if (err) {
+		bt_dev_err(hdev, "Failed to get fw version (%d)", err);
+		return err;
+	}
+
+	err = btmtk_usb_id_get(hdev, 0x70010020, &fw_flavor);
+	if (err) {
+		bt_dev_err(hdev, "Failed to get fw flavor (%d)", err);
+		return err;
+	}
+	fw_flavor = (fw_flavor & 0x00000080) >> 7;
+
+	btmtk_fw_get_filename(fw_bin_name, sizeof(fw_bin_name), dev_id,
+			      fw_version, fw_flavor);
+
+	return btmtk_setup_firmware_79xx(hdev, fw_bin_name,
+					 btmtk_usb_hci_wmt_sync, dev_id);
+}
+EXPORT_SYMBOL_GPL(btmtk_usb_reload_firmware);
+
 int btmtk_usb_recv_acl(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct btmtk_data *data = hci_get_priv(hdev);

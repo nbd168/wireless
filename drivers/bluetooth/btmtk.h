@@ -221,6 +221,8 @@ void btmtk_fw_get_filename(char *buf, size_t size, u32 dev_id, u32 fw_ver,
 
 int btmtk_usb_subsys_reset(struct hci_dev *hdev, u32 dev_id);
 
+int btmtk_usb_reload_firmware(struct hci_dev *hdev, u32 dev_id);
+
 int btmtk_usb_recv_acl(struct hci_dev *hdev, struct sk_buff *skb);
 
 struct urb *alloc_mtk_intr_urb(struct hci_dev *hdev, struct sk_buff *skb,
@@ -279,6 +281,11 @@ static inline void btmtk_fw_get_filename(char *buf, size_t size, u32 dev_id,
 }
 
 static inline int btmtk_usb_subsys_reset(struct hci_dev *hdev, u32 dev_id)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int btmtk_usb_reload_firmware(struct hci_dev *hdev, u32 dev_id)
 {
 	return -EOPNOTSUPP;
 }

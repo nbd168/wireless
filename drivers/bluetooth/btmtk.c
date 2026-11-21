@@ -911,6 +911,21 @@ static int btmtk_usb_uhw_reg_read(struct hci_dev *hdev, u32 reg, u32 *val)
 	return 0;
 }
 
+static int btmtk_usb_uhw_reg_update(struct hci_dev *hdev, u32 reg, u32 mask,
+				    u32 bits)
+{
+	u32 val;
+	int err;
+
+	err = btmtk_usb_uhw_reg_read(hdev, reg, &val);
+	if (err)
+		return err;
+
+	err = btmtk_usb_uhw_reg_write(hdev, reg, (val & ~mask) | bits);
+
+	return err < 0 ? err : 0;
+}
+
 static int btmtk_usb_reg_read(struct hci_dev *hdev, u32 reg, u32 *val)
 {
 	struct btmtk_data *data = hci_get_priv(hdev);
@@ -1393,9 +1408,14 @@ int btmtk_usb_subsys_reset(struct hci_dev *hdev, u32 dev_id)
 		err = btmtk_usb_uhw_reg_read(hdev, MTK_BT_WDT_STATUS, &val);
 		if (err)
 			return err;
-		/* Reset the bluetooth chip via USB interface. */
-		err = btmtk_usb_uhw_reg_write(hdev, MTK_BT_SUBSYS_RST, 1);
-		if (err < 0)
+		/* Reset the bluetooth chip via USB interface. Change only the
+		 * reset bit: MT7902 has other bits set in this register and
+		 * ignores the reset bit once they are cleared.
+		 */
+		err = btmtk_usb_uhw_reg_update(hdev, MTK_BT_SUBSYS_RST,
+					       MTK_BT_SUBSYS_RST_BIT,
+					       MTK_BT_SUBSYS_RST_BIT);
+		if (err)
 			return err;
 		err = btmtk_usb_uhw_reg_write(hdev, MTK_UDMA_INT_STA_BT, 0x000000FF);
 		if (err < 0)
@@ -1411,8 +1431,9 @@ int btmtk_usb_subsys_reset(struct hci_dev *hdev, u32 dev_id)
 			return err;
 		/* MT7921 need to delay 20ms between toggle reset bit */
 		msleep(20);
-		err = btmtk_usb_uhw_reg_write(hdev, MTK_BT_SUBSYS_RST, 0);
-		if (err < 0)
+		err = btmtk_usb_uhw_reg_update(hdev, MTK_BT_SUBSYS_RST,
+					       MTK_BT_SUBSYS_RST_BIT, 0);
+		if (err)
 			return err;
 		err = btmtk_usb_uhw_reg_read(hdev, MTK_BT_SUBSYS_RST, &val);
 		if (err)

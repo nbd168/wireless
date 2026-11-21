@@ -188,6 +188,8 @@ void mt792x_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 		}
 	}
 
+	rcu_read_lock();
+
 	if (control->sta) {
 		struct mt792x_link_sta *mlink;
 		struct mt792x_sta *sta;
@@ -196,10 +198,10 @@ void mt792x_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 		sta = (struct mt792x_sta *)control->sta->drv_priv;
 		if (link_id >= IEEE80211_LINK_UNSPECIFIED)
 			link_id = sta->deflink_id;
-		mlink = mt792x_sta_to_link(sta, link_id);
+		mlink = mt792x_sta_to_link_rcu(sta, link_id);
 		if (!mlink) {
 			ieee80211_free_txskb(hw, skb);
-			return;
+			goto unlock;
 		}
 		wcid = &mlink->wcid;
 	}
@@ -228,7 +230,6 @@ void mt792x_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 		struct ieee80211_bss_conf *conf;
 
 		link_id = wcid->link_id;
-		rcu_read_lock();
 		conf = rcu_dereference(vif->link_conf[link_id]);
 		memcpy(hdr->addr2, conf->addr, ETH_ALEN);
 
@@ -237,13 +238,12 @@ void mt792x_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 
 		if (vif->type == NL80211_IFTYPE_STATION)
 			memcpy(hdr->addr3, conf->bssid, ETH_ALEN);
-		rcu_read_unlock();
 	}
 
 	if (mt76_connac_pm_ref(mphy, &dev->pm)) {
 		mt76_tx(mphy, control->sta, wcid, skb);
 		mt76_connac_pm_unref(mphy, &dev->pm);
-		return;
+		goto unlock;
 	}
 
 	qid = skb_get_queue_mapping(skb);
@@ -253,6 +253,8 @@ void mt792x_tx(struct ieee80211_hw *hw, struct ieee80211_tx_control *control,
 	}
 
 	mt76_connac_pm_queue_skb(hw, &dev->pm, wcid, skb);
+unlock:
+	rcu_read_unlock();
 }
 EXPORT_SYMBOL_GPL(mt792x_tx);
 

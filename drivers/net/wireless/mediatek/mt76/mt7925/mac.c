@@ -1137,9 +1137,9 @@ mt7928_mac_add_txs_skb_msg(struct mt792x_dev *dev, struct mt76_wcid *wcid,
 	struct ieee80211_supported_band *sband;
 	struct mt76_dev *mdev = &dev->mt76;
 	struct ieee80211_tx_info *info;
+	struct rate_info rate = {};
 	struct sk_buff_head list;
 	u32 txrate, mode, stbc;
-	struct rate_info rate;
 	struct mt76_phy *mphy;
 	struct sk_buff *skb;
 	bool cck = false;

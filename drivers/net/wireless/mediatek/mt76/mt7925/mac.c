@@ -215,6 +215,9 @@ static int mt7925_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
 	struct ieee80211_hdr hdr;
 	u16 frame_control;
 
+	if (skb->len < hdr_gap + sizeof(*eth_hdr))
+		return -EINVAL;
+
 	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
 	    MT_RXD3_NORMAL_U2M)
 		return -EINVAL;
@@ -601,6 +604,9 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
+	if (hdr_gap >= skb->len)
+		return -EINVAL;
+
 	if (hdr_trans && ieee80211_has_morefrags(fc)) {
 		if (mt7925_reverse_frag0_hdr_trans(skb, hdr_gap))
 			return -EINVAL;

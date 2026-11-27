@@ -1086,6 +1086,8 @@ int mt7603_tx_prepare_skb(struct mt76_dev *mdev, void *txwi_ptr,
 	}
 
 	pid = mt76_tx_status_skb_add(mdev, wcid, tx_info->skb);
+	if (qid >= MT_TXQ_BEACON)
+		pid = MT7603_PACKET_ID_BCAST;
 
 	if (info->flags & IEEE80211_TX_CTL_RATE_CTRL_PROBE) {
 		spin_lock_bh(&dev->mt76.lock);
@@ -1279,6 +1281,11 @@ void mt7603_mac_add_txs(struct mt7603_dev *dev, void *data)
 	pid = le32_get_bits(txs_data[4], MT_TXS4_PID);
 	wcidx = le32_get_bits(txs_data[3], MT_TXS3_WCID);
 
+	if (pid == MT7603_PACKET_ID_BCAST) {
+		dev->bcast_check = 0;
+		return;
+	}
+
 	if (pid == MT_PACKET_ID_NO_ACK)
 		return;
 
@@ -1339,6 +1346,9 @@ static void mt7603_pse_reset(struct mt7603_dev *dev)
 
 	/* Reset PSE */
 	mt76_set(dev, MT_MCU_DEBUG_RESET, MT_MCU_DEBUG_RESET_PSE);
+
+	/* Reset broadcast TXS loss trigger */
+	dev->bcast_check = 0;
 
 	if (!mt76_poll_msec(dev, MT_MCU_DEBUG_RESET,
 			    MT_MCU_DEBUG_RESET_PSE_S,
@@ -1475,6 +1485,7 @@ static void mt7603_mac_watchdog_reset(struct mt7603_dev *dev)
 	}
 
 	if (dev->failed_pse_reset_attempts ||
+	    dev->cur_reset_cause == RESET_CAUSE_BCAST_TXS_TIMEOUT ||
 	    dev->cur_reset_cause == RESET_CAUSE_RX_PSE_BUSY)
 		mt7603_pse_reset(dev);
 
@@ -1900,6 +1911,10 @@ void mt7603_mac_work(struct work_struct *work)
 				  RESET_CAUSE_RX_PSE_BUSY,
 				  MT7603_WATCHDOG_TIMEOUT,
 				  mt7603_rx_pse_busy) ||
+	    mt7603_watchdog_check(dev, &dev->bcast_check,
+				  RESET_CAUSE_BCAST_TXS_TIMEOUT,
+				  MT7603_WATCHDOG_BCAST_TIMEOUT,
+				  NULL) ||
 	    mt7603_watchdog_check(dev, &dev->beacon_check,
 				  RESET_CAUSE_BEACON_STUCK,
 				  MT7603_WATCHDOG_TIMEOUT,

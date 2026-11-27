@@ -31,8 +31,12 @@
 
 #define MT7603_PRE_TBTT_TIME	5000 /* ms */
 
-#define MT7603_WATCHDOG_TIME	100 /* ms */
-#define MT7603_WATCHDOG_TIMEOUT	10 /* number of checks */
+#define MT7603_WATCHDOG_TIME		100 /* ms */
+#define MT7603_WATCHDOG_TIMEOUT		10 /* number of checks */
+#define MT7603_WATCHDOG_BCAST_TIMEOUT	100 /* number of beacon intervals */
+
+/* mt76_tx_status_skb_add() never returns MT_PACKET_ID_MASK */
+#define MT7603_PACKET_ID_BCAST		MT_PACKET_ID_MASK
 
 #define MT7603_EDCCA_BLOCK_TH	10
 
@@ -98,6 +102,7 @@ enum mt7603_reset_cause {
 	RESET_CAUSE_RX_PSE_BUSY,
 	RESET_CAUSE_MCU_HANG,
 	RESET_CAUSE_RESET_FAILED,
+	RESET_CAUSE_BCAST_TXS_TIMEOUT,
 	__RESET_CAUSE_MAX
 };
 
@@ -142,7 +147,10 @@ struct mt7603_dev {
 	s8 sensitivity;
 	u8 sensitivity_limit;
 
+	bool bcast_queued;
+
 	u8 beacon_check;
+	u8 bcast_check;
 	u8 tx_hang_check;
 	u8 tx_dma_check;
 	u8 rx_dma_check;

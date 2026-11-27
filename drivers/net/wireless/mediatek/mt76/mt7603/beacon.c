@@ -71,6 +71,8 @@ mt7603_update_beacon_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 	mt76_tx_queue_skb(dev, dev->mphy.q_tx[MT_TXQ_BEACON],
 			  MT_TXQ_BEACON, skb, &mvif->sta.wcid, NULL);
 
+	dev->bcast_queued = true;
+
 out:
 	spin_unlock_bh(&dev->ps_lock);
 }
@@ -127,6 +129,7 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		dev->beacon_check = 0;
 	mt7603_mac_stuck_beacon_recovery(dev);
 
+	dev->bcast_queued = false;
 	q = dev->mphy.q_tx[MT_TXQ_BEACON];
 	spin_lock(&q->lock);
 	ieee80211_iterate_active_interfaces_atomic(mt76_hw(dev),
@@ -137,7 +140,7 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 
 	mt76_csa_check(mdev);
 	if (mdev->csa_complete)
-		return;
+		goto out;
 
 	q = dev->mphy.q_tx[MT_TXQ_CAB];
 	do {
@@ -149,7 +152,7 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		 skb_queue_len(&data.q) < 8);
 
 	if (skb_queue_empty(&data.q))
-		return;
+		goto out;
 
 	for (i = 0; i < ARRAY_SIZE(data.tail); i++) {
 		if (!data.tail[i])
@@ -165,6 +168,7 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		struct mt7603_vif *mvif = (struct mt7603_vif *)vif->drv_priv;
 
 		mt76_tx_queue_skb(dev, q, MT_TXQ_CAB, skb, &mvif->sta.wcid, NULL);
+		dev->bcast_queued = true;
 	}
 	mt76_queue_kick(dev, q);
 	spin_unlock(&q->lock);
@@ -177,6 +181,9 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		MT_WF_ARB_CAB_START_BSSn(0) |
 		(MT_WF_ARB_CAB_START_BSS0n(1) *
 		 ((1 << (MT7603_MAX_INTERFACES - 1)) - 1)));
+out:
+	if (dev->bcast_queued)
+		dev->bcast_check++;
 }
 
 void mt7603_beacon_set_timer(struct mt7603_dev *dev, int idx, int intval)

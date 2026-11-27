@@ -14,6 +14,7 @@ mt7603_reset_read(struct seq_file *s, void *data)
 		[RESET_CAUSE_BEACON_STUCK] = "Beacon stuck",
 		[RESET_CAUSE_MCU_HANG] = "MCU hang",
 		[RESET_CAUSE_RESET_FAILED] = "PSE reset failed",
+		[RESET_CAUSE_BCAST_TXS_TIMEOUT] = "Broadcast TXS timeout",
 	};
 	int i;
 
@@ -21,7 +22,7 @@ mt7603_reset_read(struct seq_file *s, void *data)
 		if (!reset_cause_str[i])
 			continue;
 
-		seq_printf(s, "%20s: %u\n", reset_cause_str[i],
+		seq_printf(s, "%23s: %u\n", reset_cause_str[i],
 			   dev->reset_cause[i]);
 	}
 

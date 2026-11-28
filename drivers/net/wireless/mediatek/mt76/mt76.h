@@ -272,6 +272,12 @@ struct mt76_queue {
  */
 #define MT76_MCU_CMD_READ	BIT(30)
 
+/* mt7603 uses negative command ids, do not mask them */
+static inline int mt76_mcu_cmd_strip(int cmd)
+{
+	return cmd < 0 ? cmd : cmd & ~MT76_MCU_CMD_READ;
+}
+
 struct mt76_mcu_ops {
 	unsigned int max_retry;
 	u32 headroom;
